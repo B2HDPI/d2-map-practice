@@ -1,0 +1,871 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D2 map practice</title>
+<style>
+  :root {
+    --bg: #0b0c10; --panel: #14161c; --line: #262a33;
+    --text: #d7dae0; --dim: #8b909c; --ok: #7dff6a; --bad: #e0645c;
+    --lv: #e8c36a;            /* colour of the current level, set from script */
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { display: flex; flex-direction: column; }
+
+  header { display: flex; align-items: center; gap: 26px; flex-wrap: wrap;
+    padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 15px; font-weight: 600; color: var(--lv); }
+  header .sub { color: var(--dim); font-size: 12.5px; }
+  .pips { display: flex; gap: 5px; margin-top: 5px; }
+  .pip { width: 22px; height: 6px; border-radius: 3px; background: #272a33; }
+  .pip.done { background: var(--c); }
+  .pip.now { background: transparent; box-shadow: inset 0 0 0 1.5px var(--c); }
+
+  .grp .lbl { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .grp .val { font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .grp .val b { font-weight: 600; }
+  .grp .val i { font-style: normal; color: var(--dim); font-size: 12px; margin: 0 6px 0 3px; }
+  .grp.avg .val { color: #c9cdd6; }
+  .spacer { flex: 1; }
+  select { font: inherit; color: var(--text); background: #1d2029; border: 1px solid var(--line);
+    border-radius: 6px; padding: 4px 8px; }
+  button { font: inherit; color: var(--text); background: #1d2029; border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 11px; cursor: pointer; }
+  button:hover { border-color: #3b4150; background: #232733; }
+  button.link { background: none; border: none; padding: 0 2px; color: var(--dim); font-size: 11px;
+    text-decoration: underline; cursor: pointer; margin-left: 8px; }
+  button.link:hover { color: var(--text); }
+  button.primary { border-color: var(--lv); color: #fff; }
+  kbd { font: 11px ui-monospace, monospace; color: var(--dim); border: 1px solid var(--line);
+    border-radius: 3px; padding: 0 4px; margin-left: 4px; }
+
+  main { flex: 1; min-height: 0; position: relative; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .overlay { position: absolute; left: 50%; transform: translateX(-50%); pointer-events: none;
+    text-align: center; }
+  #hint { bottom: 12px; color: var(--dim); font-size: 12.5px; white-space: nowrap; }
+  #toast { top: 12px; padding: 4px 12px; border-radius: 6px; background: rgba(224,100,92,.18);
+    color: #f0a8a3; opacity: 0; transition: opacity .15s; }
+  #toast.show { opacity: 1; }
+
+  #result { bottom: 20px; min-width: 300px; padding: 14px 22px 16px; border-radius: 10px;
+    background: rgba(20,22,28,.95); border: 1px solid var(--lv); display: none; pointer-events: auto; }
+  #result.show { display: block; }
+  #result h2 { margin: 0 0 6px; font-size: 17px; color: var(--lv); }
+  #result p { margin: 0 0 8px; font-variant-numeric: tabular-nums; }
+  #result p.dim { color: var(--dim); font-size: 12.5px; }
+  #result .row { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
+  #result table { border-collapse: collapse; margin: 6px auto 8px; font-variant-numeric: tabular-nums; }
+  #result th { color: var(--dim); font-weight: 500; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .05em; padding: 2px 14px; text-align: right; }
+  #result td { padding: 2px 14px; text-align: right; }
+  #result th:first-child, #result td:first-child { text-align: left; }
+  #result td .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+    margin-right: 8px; vertical-align: -1px; }
+  #result tr.total td { border-top: 1px solid var(--line); font-weight: 600; padding-top: 5px; }
+  #error { padding: 40px; color: var(--bad); display: none; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1 id="title">Map practice</h1>
+    <div class="sub" id="subtitle"></div>
+    <div class="pips" id="pips"></div>
+  </div>
+  <div class="grp"><div class="lbl">Mode</div>
+    <select id="mode" tabindex="-1" aria-label="Mode"></select></div>
+  <div class="grp"><div class="lbl">This level</div>
+    <div class="val"><b id="l-tp">0</b><i id="l-tp-u">teleports</i><b id="l-time">0.0 s</b></div></div>
+  <div class="grp"><div class="lbl">Run total</div>
+    <div class="val"><b id="r-tp">0</b><i id="r-tp-u">teleports</i><b id="r-time">0.0 s</b></div></div>
+  <div class="grp avg"><div class="lbl">Average per run <span id="avg-n"></span>
+      <button class="link" id="btn-reset" tabindex="-1">reset</button></div>
+    <div class="val" id="avg">no completed runs yet</div></div>
+  <div class="grp avg" id="runes-grp"><div class="lbl">Countess runes</div>
+    <div class="val" id="runes">none yet</div></div>
+  <div class="spacer"></div>
+  <button id="btn-restart" tabindex="-1">Restart run<kbd>R</kbd></button>
+  <button id="btn-new" tabindex="-1">New run<kbd>N</kbd></button>
+</header>
+<main id="stage">
+  <canvas id="c"></canvas>
+  <div class="overlay" id="toast"></div>
+  <div class="overlay" id="hint">Click to teleport, up to the edge of the bright frame. Find the stairs down. Wheel zooms.</div>
+  <div class="overlay" id="result"></div>
+  <div id="error">
+    No maps found. Put <code>maps.js</code>, <code>maps-durance.js</code> or
+    <code>maps-worldstone.js</code> next to this file; make them with
+    <code>node dump-maps.mjs --preset=tower|durance|worldstone</code>.
+  </div>
+</main>
+
+<script src="maps.js"></script>
+<script src="maps-durance.js"></script>
+<script src="maps-worldstone.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  // ==== Parameters ============================================================================
+
+  // The game screen, in game pixels. Teleport targets must lie inside it, and what falls inside
+  // it after a jump is what you get to see. The isometric projection is the game's own: one
+  // subtile step in x is (+8, +4) pixels, in y it is (-8, +4), so a subtile is a 16x8 diamond.
+  const SCREEN_W = 800, SCREEN_H = 600;
+  const U = 8;
+
+  // How large the screen frame is relative to the browser window, as the fraction of the window's
+  // width or height it fills (whichever is the tighter fit). Smaller means a smaller frame and
+  // more of the remembered map visible around it. You can also override it without editing:
+  // index.html?frame=0.3
+  const FRAME_SHARE = (() => {
+    const q = parseFloat(new URLSearchParams(location.search).get('frame'));
+    return q > 0 && q <= 1 ? q : 0.23;
+  })();
+  const ZOOM_MIN = 0.4, ZOOM_MAX = 10;   // mouse wheel limits while playing, relative to FRAME_SHARE
+
+  // With a small frame one mouse pixel spans a fraction of a subtile, so a click aimed at the floor
+  // beside a wall often lands on the wall. A click on a blocked cell goes to the nearest walkable
+  // cell within this many subtiles instead. Set it to 0 to require an exact hit.
+
+  // When a level ends the camera moves out to frame everything you have seen.
+  const FIT_SHARE = 0.92;     // fraction of the free window the finished map may fill
+  const FIT_MAX_ZOOM = 1.5;   // never zoom in further than this (screen px per game px)
+  const ZOOM_OUT_MS = 800;
+
+  // One colour pair per level, used in order (and repeated if a run has more levels).
+  // wall: the outlines. floor: walkable ground you have seen.
+  const LEVEL_COLORS = [
+    { wall: [232, 195, 106], floor: [58, 50, 30] },    // level 1, amber
+    { wall: [108, 180, 255], floor: [28, 46, 74] },    // level 2, blue
+    { wall: [197, 139, 255], floor: [48, 34, 76] },    // level 3, violet
+    { wall: [255, 138, 138], floor: [74, 34, 40] },    // level 4, rose
+  ];
+
+  const COL = { bg: '#0b0c10', ok: '#7dff6a', bad: '#e0645c', entrance: '#ffffff',
+                exit: '#7dff6a', trail: 'rgba(255,255,255,.32)' };
+
+  // ==== DOM and data ==========================================================================
+
+  const $ = id => document.getElementById(id);
+  const canvas = $('c'), ctx = canvas.getContext('2d');
+  const stage = $('stage');
+
+  // Each map file adds one set to window.D2_SETS (an old maps.js with window.D2_RUNS counts as the
+  // tower). A mode without its file is listed but cannot be picked. Stats are kept per mode.
+  const SETS = Object.assign({}, window.D2_SETS || {});
+  if (Array.isArray(window.D2_RUNS) && !SETS.tower) SETS.tower = { runs: window.D2_RUNS };
+  const MODES = [
+    { id: 'tower', label: 'Tower Cellar 1 to 4', key: 'd2-tower-practice-stats-v1', countess: true },
+    { id: 'durance', label: 'Durance of Hate 1 and 2', key: 'd2-practice-stats-v1-durance' },
+    { id: 'worldstone', label: 'Worldstone Keep 1 to 3', key: 'd2-practice-stats-v1-worldstone' },
+  ];
+  const have = m => SETS[m.id] && Array.isArray(SETS[m.id].runs) && SETS[m.id].runs.length > 0;
+  let MODE = null, RUNS = [];
+  if (!MODES.some(have)) {
+    $('error').style.display = 'block';
+    canvas.style.display = 'none';
+    return;
+  }
+
+  const rgb = c => `rgb(${c[0]},${c[1]},${c[2]})`;
+  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+  function fmtTime(ms) {
+    const s = ms / 1000;
+    if (s < 60) return s.toFixed(1) + ' s';
+    const m = Math.floor(s / 60);
+    return m + ':' + (s - m * 60).toFixed(1).padStart(4, '0');
+  }
+
+  // ==== Countess runes ========================================================================
+
+  // Hell Countess, /players 1: one in N runs drops at least one of that rune (dropcalc / d2runewizard
+  // figures). Cham, Jah, Ber and Zod cannot drop. Each rune is rolled on its own, which reproduces
+  // these per-rune odds. Ordered from lowest to highest rune.
+  const COUNTESS_RUNES = [
+    ['El', 23], ['Eld', 34.5], ['Tir', 9.2], ['Nef', 13.8], ['Eth', 6.57], ['Ith', 9.86],
+    ['Tal', 4.6], ['Ral', 6.9], ['Ort', 4.6], ['Thul', 6.9], ['Amn', 5.95], ['Sol', 8.93],
+    ['Shael', 9.92], ['Dol', 14.9], ['Hel', 17.9], ['Io', 26.8], ['Lum', 33.8], ['Ko', 50.8],
+    ['Fal', 65.9], ['Lem', 98.8], ['Pul', 130], ['Um', 195], ['Mal', 191], ['Ist', 287],
+    ['Gul', 21434], ['Vex', 32150], ['Ohm', 30519], ['Lo', 45779],
+  ];
+  const RUNE_ORDER = ['El', 'Eld', 'Tir', 'Nef', 'Eth', 'Ith', 'Tal', 'Ral', 'Ort', 'Thul', 'Amn', 'Sol',
+    'Shael', 'Dol', 'Hel', 'Io', 'Lum', 'Ko', 'Fal', 'Lem', 'Pul', 'Um', 'Mal', 'Ist', 'Gul', 'Vex',
+    'Ohm', 'Lo'];                                  // El first, Lo last (Hell Countess range)
+  function rollCountess() {
+    return COUNTESS_RUNES.filter(([, n]) => Math.random() < 1 / n).map(r => r[0]);
+  }
+  // "Tal, Ort, Ist" from the highest rune down, with repeats as "Tal x2".
+  function runeList(names) {
+    const count = {};
+    names.forEach(r => { count[r] = (count[r] || 0) + 1; });
+    return Object.keys(count).sort((a, b) => RUNE_ORDER.indexOf(b) - RUNE_ORDER.indexOf(a))
+      .map(r => count[r] > 1 ? `${r} \u00d7${count[r]}` : r).join(', ');
+  }
+
+  // ==== Stats, kept across sessions ===========================================================
+
+  const Stats = {
+    runs: [],
+    load() {
+      try { this.runs = JSON.parse(localStorage.getItem(MODE.key) || '[]'); }
+      catch (e) { this.runs = []; }
+      if (!Array.isArray(this.runs)) this.runs = [];
+    },
+    save() {
+      try { localStorage.setItem(MODE.key, JSON.stringify(this.runs.slice(-1000))); }
+      catch (e) { /* private mode or blocked storage: keep the in-memory list */ }
+    },
+    add(rec) { this.runs.push(rec); this.save(); },
+    clear() { this.runs = []; this.save(); },
+    average() {
+      const n = this.runs.length;
+      if (!n) return null;
+      return {
+        n,
+        ms: this.runs.reduce((a, r) => a + r.ms, 0) / n,
+        tp: this.runs.reduce((a, r) => a + r.tp, 0) / n,
+      };
+    },
+    runes() { return this.runs.flatMap(r => r.runes || []); },
+  };
+
+  // ==== Run and level state ===================================================================
+  //
+  // T is the tower run: which seed, which level, the finished levels' numbers, and the clock.
+  //   phase 'ready'      level 1, nothing clicked yet; the clock has not started
+  //   phase 'playing'    the clock is running
+  //   phase 'levelDone'  exit seen, waiting for you to continue; the clock is stopped
+  //   phase 'runDone'    last exit seen; summary shown; the clock is stopped
+  // The clock starts at the first teleport of the run, runs straight through the level changes,
+  // and stops only while a card is waiting for you.
+  //
+  // S is the level being played (or reviewed).
+
+  let T = null, S = null;
+  let userZoom = 1;
+  let queue = [];
+
+  function nextRunIndex(not) {
+    if (queue.length === 0) {
+      queue = RUNS.map((_, i) => i);
+      for (let i = queue.length - 1; i > 0; i--) {           // Fisher-Yates
+        const j = Math.floor(Math.random() * (i + 1));
+        [queue[i], queue[j]] = [queue[j], queue[i]];
+      }
+    }
+    let i = queue.pop();
+    if (i === not && RUNS.length > 1) i = nextRunIndex(not);
+    return i;
+  }
+
+  function startRun(index) {
+    T = { index, run: RUNS[index], li: 0, done: [], t0: 0, phase: 'ready', saved: false };
+    $('result').classList.remove('show');
+    loadLevel(0);
+  }
+
+  function loadLevel(li) {
+    T.li = li;
+    const m = T.run.levels[li];
+    const { w, h } = m;
+    const cells = new Uint8Array(w * h);
+    let p = 0;
+    for (let i = 0; i < m.rle.length; i += 2) {
+      cells.fill(m.rle[i], p, p + m.rle[i + 1]);
+      p += m.rle[i + 1];
+    }
+
+    // What to paint for a revealed cell: floor, a wall (blocked but touching floor), or nothing.
+    const kind = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x, v = cells[i];
+        if (v === 1) kind[i] = 1;
+        else if (v === 2) {
+          // Eight neighbours, so diagonal staircases of wall stay connected.
+          let touches = false;
+          for (let dy = -1; dy <= 1 && !touches; dy++) {
+            const yy = y + dy;
+            if (yy < 0 || yy >= h) continue;
+            for (let dx = -1; dx <= 1; dx++) {
+              const xx = x + dx;
+              if (xx >= 0 && xx < w && cells[yy * w + xx] === 1) { touches = true; break; }
+            }
+          }
+          if (touches) kind[i] = 2;
+        }
+      }
+    }
+
+    const layer = document.createElement('canvas');
+    layer.width = w; layer.height = h;
+    const layerCtx = layer.getContext('2d');
+    const img = layerCtx.createImageData(w, h);
+    const colors = LEVEL_COLORS[li % LEVEL_COLORS.length];
+    document.documentElement.style.setProperty('--lv', rgb(colors.wall));
+
+    S = {
+      li, map: m, w, h, cells, kind, layer, layerCtx, img, colors,
+      revealed: new Uint8Array(w * h),
+      px: m.start[0], py: m.start[1],
+      steps: 0, ms: null, finished: false,
+      trail: [[m.start[0], m.start[1]]],
+      review: false, cam: null, anim: null,
+    };
+    hover = null;
+
+    // The clock runs straight on from the previous level; level 1 waits for the first teleport.
+    if (li > 0) { T.t0 = performance.now(); T.phase = 'playing'; }
+    else T.phase = 'ready';
+
+    $('result').classList.remove('show');
+    $('hint').style.visibility = 'visible';
+    reveal();
+    renderPips();
+    updateHud();
+    checkExit();                        // in case the exit is already on screen
+    requestRender();
+  }
+
+  // ==== Reveal and finish =====================================================================
+
+  // Everything that falls inside the screen rectangle around the player becomes known.
+  function reveal() {
+    const { w, h, px, py, kind, revealed, img, colors } = S;
+    const data = img.data;
+    // The screen is |u - v| <= 50 and |u + v| <= 75 subtiles, so |u| and |v| never exceed 62.5.
+    const R = Math.ceil((SCREEN_W / 2 / U + SCREEN_H / 2 / (U / 2)) / 2) + 1;
+    for (let v = -R; v <= R; v++) {
+      const y = py + v;
+      if (y < 0 || y >= h) continue;
+      for (let u = -R; u <= R; u++) {
+        const x = px + u;
+        if (x < 0 || x >= w) continue;
+        if (Math.abs(u - v) * U > SCREEN_W / 2) continue;
+        if (Math.abs(u + v) * (U / 2) > SCREEN_H / 2) continue;
+        const i = y * w + x;
+        if (revealed[i]) continue;
+        revealed[i] = 1;
+        const k = kind[i];
+        if (k) {
+          const c = k === 1 ? colors.floor : colors.wall, o = i * 4;
+          data[o] = c[0]; data[o + 1] = c[1]; data[o + 2] = c[2]; data[o + 3] = 255;
+        }
+      }
+    }
+    S.layerCtx.putImageData(img, 0, 0);
+  }
+
+  function exitSeen() {
+    const [ex, ey] = S.map.exit;
+    return S.revealed[ey * S.w + ex] === 1;
+  }
+
+  function checkExit() {
+    if (S.finished || !exitSeen()) return;
+    finishLevel();
+  }
+
+  function finishLevel() {
+    const now = performance.now();
+    S.finished = true;
+    S.ms = T.t0 ? now - T.t0 : 0;          // the clock stops here
+    T.done.push({ tp: S.steps, ms: S.ms });
+    const last = T.li === T.run.levels.length - 1;
+    T.phase = last ? 'runDone' : 'levelDone';
+
+    if (last) {
+      const rec = {
+        seed: T.run.seed,
+        tp: T.done.reduce((a, d) => a + d.tp, 0),
+        ms: T.done.reduce((a, d) => a + d.ms, 0),
+        levels: T.done.map(d => ({ tp: d.tp, ms: Math.round(d.ms) })),
+        ...(MODE.countess ? { runes: rollCountess() } : {}),   // the Countess waits below the tower
+        at: Date.now(),
+      };
+      if (!T.saved) { T.saved = true; T.runes = rec.runes || []; Stats.add(rec); }
+    }
+    showCard();
+    $('hint').style.visibility = 'hidden';
+    beginReview();
+    updateHud();
+  }
+
+  function continueRun() {
+    if (!T || T.phase !== 'levelDone') return;
+    loadLevel(T.li + 1);
+  }
+
+  // ==== Camera ================================================================================
+  //
+  // The camera looks at a point (fx, fy) in continuous map coordinates, where cell (x, y) covers
+  // [x, x+1) x [y, y+1). While playing it sits on the player. At the end of a level it moves out.
+
+  let W = 0, H = 0, dpr = 1;
+  const baseZoom = () =>
+    Math.min(W / (SCREEN_W / FRAME_SHARE), H / (SCREEN_H / FRAME_SHARE)) * userZoom;
+
+  const playCam = () => ({ fx: S.px + 0.5, fy: S.py + 0.5, z: baseZoom() });
+  const cam = () => (S.review ? S.cam : playCam());
+
+  // A map point (continuous coordinates) to CSS pixels.
+  function projectF(X, Y, c) {
+    c = c || cam();
+    return [W / 2 + U * c.z * ((X - c.fx) - (Y - c.fy)),
+            H / 2 + (U / 2) * c.z * ((X - c.fx) + (Y - c.fy))];
+  }
+  const project = (x, y, c) => projectF(x + 0.5, y + 0.5, c);
+
+  // The cell the player means by a pointer position. Inside the screen frame that is the cell under
+  // the pointer. Outside it, the pointer is projected onto the frame along the line from the player,
+  // so you get the outermost spot of the frame in the direction you are pointing.
+  function cellAt(mx, my) {
+    const c = cam();
+    const p = projectF(S.px + 0.5, S.py + 0.5, c);
+    let A = (mx - p[0]) / c.z, B = (my - p[1]) / c.z;         // game pixels from the player
+    const hw = SCREEN_W / 2, hh = SCREEN_H / 2;
+    const inFrame = Math.abs(A) <= hw && Math.abs(B) <= hh;
+    if (!inFrame) {
+      const t = Math.min(hw / Math.abs(A), hh / Math.abs(B)) * 0.985;   // a hair inside the edge
+      A *= t; B *= t;
+    }
+    const sd = A / U, ss = B / (U / 2);                       // u - v, u + v
+    return {
+      x: Math.floor(S.px + 0.5 + (sd + ss) / 2),
+      y: Math.floor(S.py + 0.5 + (ss - sd) / 2),
+      inFrame,
+    };
+  }
+
+  // The camera that frames everything seen on this level, leaving room for the card.
+  function fitCam() {
+    const { w, h, kind, revealed } = S;
+    let aMin = Infinity, aMax = -Infinity, bMin = Infinity, bMax = -Infinity;
+    const take = (x, y) => {
+      const a = x - y, b = (x + y) / 2;
+      if (a < aMin) aMin = a; if (a > aMax) aMax = a;
+      if (b < bMin) bMin = b; if (b > bMax) bMax = b;
+    };
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (revealed[i] && kind[i]) take(x + 0.5, y + 0.5);
+      }
+    }
+    take(S.map.start[0] + 0.5, S.map.start[1] + 0.5);
+    take(S.map.exit[0] + 0.5, S.map.exit[1] + 0.5);
+    aMin -= 2; aMax += 2; bMin -= 2; bMax += 2;
+
+    const card = $('result');
+    const reserve = card.classList.contains('show') ? card.offsetHeight + 36 : 20;
+    const availW = W * FIT_SHARE, availH = Math.max(80, (H - reserve) * FIT_SHARE);
+    const z = Math.min(FIT_MAX_ZOOM, availW / (U * (aMax - aMin)), availH / (U * (bMax - bMin)));
+
+    // Put the middle of the seen area in the middle of the free part of the window.
+    const Fa = (aMin + aMax) / 2;
+    const Fb = (bMin + bMax) / 2 + (reserve / 2) / (U * z);
+    return { fx: Fb + Fa / 2, fy: Fb - Fa / 2, z };
+  }
+
+  function beginReview() {
+    const from = playCam();
+    S.review = true;
+    S.cam = from;
+    S.anim = { t0: performance.now(), dur: ZOOM_OUT_MS, from, to: fitCam() };
+    hover = null;
+    canvas.style.cursor = 'default';
+    requestRender();
+  }
+
+  const ease = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+  function advanceAnim() {
+    const an = S.anim;
+    if (!an) return;
+    const t = Math.min(1, (performance.now() - an.t0) / an.dur), e = ease(t);
+    S.cam = {
+      fx: an.from.fx + (an.to.fx - an.from.fx) * e,
+      fy: an.from.fy + (an.to.fy - an.from.fy) * e,
+      z: an.from.z * Math.pow(an.to.z / an.from.z, e),
+    };
+    if (t >= 1) { S.cam = { ...an.to }; S.anim = null; }
+  }
+
+  // ==== Interaction ===========================================================================
+
+  let hover = null;
+
+  // The cell a click at `c` would actually teleport to: the open cell nearest to it (measured on
+  // screen) among those inside the screen frame. Null only if the frame holds no floor at all.
+  function resolveTarget(c) {
+    const { w, h, cells, px, py } = S;
+    const R = Math.ceil((SCREEN_W / 2 / U + SCREEN_H / 2 / (U / 2)) / 2) + 1;
+    const gu = c.x - px, gv = c.y - py;
+    let best = null, bestD = Infinity;
+    for (let v = -R; v <= R; v++) {
+      const y = py + v;
+      if (y < 0 || y >= h) continue;
+      for (let u = -R; u <= R; u++) {
+        const x = px + u;
+        if (x < 0 || x >= w || cells[y * w + x] !== 1) continue;
+        if (Math.abs(u - v) * U > SCREEN_W / 2 || Math.abs(u + v) * (U / 2) > SCREEN_H / 2) continue;
+        const sx = (u - gu) - (v - gv), sy = ((u - gu) + (v - gv)) / 2;   // screen offset / U
+        const d = sx * sx + sy * sy;
+        if (d < bestD) { bestD = d; best = { x, y }; }
+      }
+    }
+    return best;
+  }
+
+  const playing = () => T && (T.phase === 'ready' || T.phase === 'playing') && !S.finished;
+
+  function toast(msg) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toast.id);
+    toast.id = setTimeout(() => t.classList.remove('show'), 900);
+  }
+
+  function pointer(e) {
+    const r = canvas.getBoundingClientRect();
+    return [e.clientX - r.left, e.clientY - r.top];
+  }
+
+  canvas.addEventListener('mousemove', e => {
+    if (!S || !playing()) return;
+    const [mx, my] = pointer(e);
+    hover = cellAt(mx, my);
+    canvas.style.cursor = 'crosshair';
+    requestRender();
+  });
+  canvas.addEventListener('mouseleave', () => { hover = null; requestRender(); });
+
+  canvas.addEventListener('click', e => {
+    if (!S || !playing()) return;
+    const c = cellAt(...pointer(e));
+    const t = resolveTarget(c);
+    if (!t) { toast("Can't teleport there"); return; }
+    if (t.x === S.px && t.y === S.py) return;
+    if (T.phase === 'ready') { T.t0 = performance.now(); T.phase = 'playing'; }   // first teleport
+    S.px = t.x; S.py = t.y;
+    S.steps++;
+    S.trail.push([t.x, t.y]);
+    hover = null;
+    reveal();
+    updateHud();
+    checkExit();
+    requestRender();
+  });
+
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    if (!S) return;
+    const f = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+    if (S.review) {
+      S.anim = null;
+      S.cam.z = Math.max(0.05, Math.min(4, S.cam.z * f));
+    } else {
+      userZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, userZoom * f));
+    }
+    requestRender();
+  }, { passive: false });
+
+  function setMode(id) {
+    const m = MODES.find(x => x.id === id && have(x)) || MODES.find(have);
+    MODE = m;
+    RUNS = SETS[m.id].runs;
+    queue = [];
+    Stats.load();
+    $('mode').value = m.id;
+    $('runes-grp').style.display = m.countess ? '' : 'none';
+    try { localStorage.setItem('d2-practice-mode', m.id); } catch (e) { /* ignore */ }
+    renderAvg();
+    startRun(nextRunIndex(-1));
+  }
+  $('mode').innerHTML = MODES.map(m =>
+    `<option value="${m.id}"${have(m) ? '' : ' disabled'}>${m.label}${have(m) ? '' : ' (no maps file)'}</option>`).join('');
+  $('mode').onchange = () => { setMode($('mode').value); $('mode').blur(); };
+
+  const restartRun = () => startRun(T.index);
+  const newRun = () => startRun(nextRunIndex(T.index));
+  $('btn-restart').onclick = () => { restartRun(); $('btn-restart').blur(); };
+  $('btn-new').onclick = () => { newRun(); $('btn-new').blur(); };
+  $('btn-reset').onclick = () => {
+    if (Stats.runs.length && confirm(`Forget all ${Stats.runs.length} saved runs in this mode?`)) {
+      Stats.clear(); renderAvg();
+    }
+    $('btn-reset').blur();
+  };
+  $('result').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.act === 'continue') continueRun();
+    else if (b.dataset.act === 'new') newRun();
+    else if (b.dataset.act === 'retry') restartRun();
+    b.blur();
+  });
+
+  addEventListener('keydown', e => {
+    if (e.ctrlKey || e.metaKey || e.altKey || !T) return;
+    const k = e.key;
+    if (k === 'r' || k === 'R') restartRun();
+    else if (k === 'n' || k === 'N') newRun();
+    else if (k === ' ' || k === 'Enter') {
+      e.preventDefault();
+      if (T.phase === 'levelDone') continueRun();
+      else if (T.phase === 'runDone') newRun();
+    }
+  });
+
+  // ==== Cards and HUD =========================================================================
+
+  function showCard() {
+    const card = $('result');
+    const n = T.run.levels.length;
+    const sumTp = T.done.reduce((a, d) => a + d.tp, 0);
+    const sumMs = T.done.reduce((a, d) => a + d.ms, 0);
+    const plural = k => `${k} teleport${k === 1 ? '' : 's'}`;
+
+    if (T.phase === 'levelDone') {
+      const d = T.done[T.li];
+      card.innerHTML = `
+        <h2>Level ${T.li + 1} of ${n} done</h2>
+        <p><b>${plural(d.tp)}</b> in <b>${fmtTime(d.ms)}</b></p>
+        <p class="dim">So far: ${plural(sumTp)}, ${fmtTime(sumMs)}. The clock is stopped.</p>
+        <div class="row"><button class="primary" data-act="continue" tabindex="-1">Continue to level
+          ${T.li + 2}<kbd>Space</kbd></button></div>`;
+    } else {
+      const rows = T.done.map((d, i) => {
+        const c = LEVEL_COLORS[i % LEVEL_COLORS.length].wall;
+        return `<tr><td><span class="sw" style="background:${rgb(c)}"></span>${T.run.levels[i].area}</td>
+                <td>${d.tp}</td><td>${fmtTime(d.ms)}</td></tr>`;
+      }).join('');
+      const avg = Stats.average();
+      card.innerHTML = `
+        <h2>${MODE.label}: run complete</h2>
+        <table>
+          <tr><th>Level</th><th>Teleports</th><th>Time</th></tr>
+          ${rows}
+          <tr class="total"><td>Total</td><td>${sumTp}</td><td>${fmtTime(sumMs)}</td></tr>
+        </table>
+        ${MODE.countess ? `<p><b>Countess:</b> ${T.runes && T.runes.length ? runeList(T.runes) : 'no runes'}</p>
+        <p class="dim">All ${avg.n} run${avg.n === 1 ? '' : 's'}: ${Stats.runes().length
+          ? runeList(Stats.runes()) : 'no runes yet'}</p>` : ''}
+        <p class="dim">Average over ${avg.n} run${avg.n === 1 ? '' : 's'}:
+          ${avg.tp.toFixed(1)} teleports, ${fmtTime(avg.ms)}</p>
+        <div class="row">
+          <button data-act="retry" tabindex="-1">Retry this seed<kbd>R</kbd></button>
+          <button class="primary" data-act="new" tabindex="-1">New run<kbd>N</kbd></button>
+        </div>`;
+    }
+    card.classList.add('show');
+    renderAvg();
+  }
+
+  function renderPips() {
+    const n = T.run.levels.length;
+    $('pips').innerHTML = Array.from({ length: n }, (_, i) => {
+      const c = rgb(LEVEL_COLORS[i % LEVEL_COLORS.length].wall);
+      const cls = i < T.done.length ? 'pip done' : (i === T.li ? 'pip now' : 'pip');
+      return `<span class="${cls}" style="--c:${c}"></span>`;
+    }).join('');
+  }
+
+  function renderAvg() {
+    const a = Stats.average();
+    $('avg').textContent = a
+      ? `${fmtTime(a.ms)}  ·  ${a.tp.toFixed(1)} teleports`
+      : 'no completed runs yet';
+    $('avg-n').textContent = a ? `(${a.n} run${a.n === 1 ? '' : 's'})` : '';
+    const rs = Stats.runes();
+    $('runes').textContent = a ? `${rs.length} rune${rs.length === 1 ? '' : 's'}` : 'none yet';
+    $('runes').title = rs.length ? runeList(rs) : '';
+  }
+
+  function updateHud() {
+    if (!T || !S) return;
+    const m = S.map;
+    $('title').textContent = m.area;
+    $('subtitle').textContent =
+      `Level ${T.li + 1} of ${T.run.levels.length}  ·  seed ${T.run.seed}  ·  ${T.run.difficulty}`;
+    updateTimes();
+    renderPips();
+    renderAvg();
+  }
+
+  function updateTimes() {
+    if (!T || !S) return;
+    const now = performance.now();
+    const doneTp = T.done.reduce((a, d) => a + d.tp, 0);
+    const doneMs = T.done.reduce((a, d) => a + d.ms, 0);
+    const lvMs = S.finished ? S.ms : (T.t0 ? now - T.t0 : 0);
+    const totTp = S.finished ? doneTp : doneTp + S.steps;
+    const totMs = S.finished ? doneMs : doneMs + lvMs;
+    $('l-tp').textContent = S.steps;
+    $('l-tp-u').textContent = S.steps === 1 ? 'teleport' : 'teleports';
+    $('l-time').textContent = fmtTime(lvMs);
+    $('r-tp').textContent = totTp;
+    $('r-tp-u').textContent = totTp === 1 ? 'teleport' : 'teleports';
+    $('r-time').textContent = fmtTime(totMs);
+  }
+  setInterval(() => { if (T && T.phase === 'playing') updateTimes(); }, 100);
+
+  // ==== Rendering =============================================================================
+
+  let pending = false;
+  function requestRender() {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => { pending = false; render(); });
+  }
+
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    W = stage.clientWidth; H = stage.clientHeight;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    if (S && S.review && !S.anim) S.cam = fitCam();     // keep the finished map framed
+    requestRender();
+  }
+  new ResizeObserver(resize).observe(stage);
+
+  function ring(x, y, r, color, lw) {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw || 2;
+    ctx.stroke();
+  }
+
+  function render() {
+    if (!S) return;
+    advanceAnim();
+    const c = cam(), z = c.z;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = COL.bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // The bitmap holds one pixel per subtile. Drawn through the iso matrix, each pixel becomes a
+    // diamond. Zoomed in, nearest-neighbour keeps edges crisp. Zoomed out it would drop thin
+    // walls, so let the browser filter the bitmap instead.
+    const a = U * z * dpr, b = (U / 2) * z * dpr;
+    const e = dpr * (W / 2 - U * z * (c.fx - c.fy));
+    const f = dpr * (H / 2 - (U / 2) * z * (c.fx + c.fy));
+    ctx.imageSmoothingEnabled = z < 0.6;
+    ctx.imageSmoothingQuality = 'high';
+
+    if (S.review) {
+      ctx.save();
+      ctx.setTransform(a, b, -a, b, e, f);
+      ctx.drawImage(S.layer, 0, 0);
+      ctx.restore();
+    } else {
+      // The screen frame (centred on the player) is the bright part; remembered cells outside
+      // it are dimmed.
+      const pc = projectF(S.px + 0.5, S.py + 0.5, c);
+      const fw = SCREEN_W * z, fh = SCREEN_H * z;
+      const fx = pc[0] - fw / 2, fy = pc[1] - fh / 2;
+      ctx.fillStyle = 'rgba(255,255,255,.035)';
+      ctx.fillRect(fx, fy, fw, fh);
+
+      ctx.save();
+      ctx.globalAlpha = 0.55;
+      ctx.setTransform(a, b, -a, b, e, f);
+      ctx.drawImage(S.layer, 0, 0);
+      ctx.restore();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(fx, fy, fw, fh);
+      ctx.clip();
+      ctx.setTransform(a, b, -a, b, e, f);
+      ctx.drawImage(S.layer, 0, 0);
+      ctx.restore();
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.strokeStyle = rgba(S.colors.wall, 0.6);
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(fx, fy, fw, fh);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Markers shrink a little when zoomed out, so they do not swamp a small frame.
+    const k = Math.max(0.6, Math.min(1, z * 2));
+
+    // Trail of previous positions, numbered once the level is over.
+    ctx.beginPath();
+    S.trail.forEach(([x, y], i) => {
+      const [sx, sy] = project(x, y, c);
+      if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+    });
+    ctx.strokeStyle = COL.trail;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    const dots = S.review ? S.trail : S.trail.slice(0, -1);
+    dots.forEach(([x, y], i) => {
+      const [sx, sy] = project(x, y, c);
+      ctx.beginPath(); ctx.arc(sx, sy, 2.5 * k, 0, Math.PI * 2);
+      ctx.fillStyle = COL.trail; ctx.fill();
+      if (S.review && i > 0 && S.trail.length <= 40) {
+        ctx.fillStyle = 'rgba(255,255,255,.8)';
+        ctx.font = '11px system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(String(i), sx + 5, sy - 5);
+      }
+    });
+
+    // Entrance marker.
+    const [ix, iy] = project(S.map.start[0], S.map.start[1], c);
+    ring(ix, iy, 7 * k, COL.entrance, 2);
+
+    // Exit marker, once you have actually seen it.
+    if (exitSeen()) {
+      const [ox, oy] = project(S.map.exit[0], S.map.exit[1], c);
+      ring(ox, oy, 11 * k, COL.exit, 3);
+      ring(ox, oy, 4 * k, COL.exit, 3);
+      ctx.fillStyle = COL.exit;
+      ctx.font = '600 12px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('EXIT', ox, oy - 16 * k);
+    }
+
+    // Hover target.
+    if (hover && playing()) {
+      const t = resolveTarget(hover);
+      const [tx, ty] = project(t ? t.x : hover.x, t ? t.y : hover.y, c);
+      ring(tx, ty, 7 * k, t ? COL.ok : COL.bad, 2);
+    }
+
+    // Player.
+    const [qx, qy] = project(S.px, S.py, c);
+    ctx.beginPath(); ctx.arc(qx, qy, 4.5 * k, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff'; ctx.fill();
+    ring(qx, qy, 8 * k, 'rgba(255,255,255,.55)', 1.5);
+
+    if (S.anim) requestRender();
+  }
+
+  // Test and debugging hook.
+  window.practice = {
+    get state() { return S; },
+    get tower() { return T; },
+    get stats() { return Stats; },
+    setMode, get mode() { return MODE; },
+    project, cellAt, startRun, newRun, restartRun, continueRun, fitCam,
+  };
+
+  resize();
+  let saved = null;
+  try { saved = localStorage.getItem('d2-practice-mode'); } catch (e) { /* ignore */ }
+  setMode(saved);
+})();
+</script>
+</body>
+</html>
